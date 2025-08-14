@@ -3,6 +3,9 @@ import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remi
 import { Form, useLoaderData, useNavigation, useFetcher } from "@remix-run/react";
 import { getTasks, createTask, deleteTask } from "~/lib/api.server";
 import { requireUserSession, logout } from "~/lib/auth.server";
+import { TaskForm } from "~/components/TaskForm";
+import { TaskItem } from "~/components/TaskItem";
+import { UserInfo } from "~/components/UserInfo";
 
 export const meta: MetaFunction = () => {
   return [
@@ -13,12 +16,22 @@ export const meta: MetaFunction = () => {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const token = await requireUserSession(request);
+  
+  // JWTトークンからユーザー名を取得
+  let username = "ユーザー";
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    username = payload.sub;
+  } catch (error) {
+    console.error("Failed to decode token:", error);
+  }
+  
   try {
     const tasks = await getTasks(token);
-    return json({ tasks });
+    return json({ tasks, username });
   } catch (error) {
     console.error("Failed to load tasks:", error);
-    return json({ tasks: [] });
+    return json({ tasks: [], username });
   }
 }
 
@@ -64,54 +77,33 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function TasksIndex() {
-  const { tasks } = useLoaderData<typeof loader>();
+  const { tasks, username } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
-  const deleteFetcher = useFetcher();
   
   const isSubmitting = navigation.state === "submitting";
 
   return (
     <div>
-      <p>ログイン中です</p>
+      <UserInfo username={username} />
+      
+      <TaskForm isSubmitting={isSubmitting} />
+      
       <div>
-        <h2>新しいタスクを追加</h2>
-        <Form method="post">
-          <input type="hidden" name="intent" value="create" />
-          <input name="title" required />
-          <button type="submit" disabled={isSubmitting}>追加</button>
-        </Form>
-        
-        <div>
-          <h2>タスク一覧</h2>
-          {tasks.length === 0 ? (
-            <p>タスクがありません。</p>
-          ) : (
-            <ul>
-              {tasks.map((task) => (
-                <li key={task.id}>
-                  {task.title}
-                  <span>
-                    <deleteFetcher.Form method="post" style={{ display: 'inline' }}>
-                      <input type="hidden" name="intent" value="delete" />
-                      <input type="hidden" name="taskId" value={task.id} />
-                      <button
-                        type="submit"
-                        style={{ marginLeft: '10px' }}
-                        disabled={
-                          deleteFetcher.state === "submitting" &&
-                          deleteFetcher.formData?.get("taskId") === task.id.toString()
-                        }
-                      >
-                        削除
-                      </button>
-                    </deleteFetcher.Form>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <h2>タスク一覧</h2>
+        {tasks.length === 0 ? (
+          <p>タスクがありません。</p>
+        ) : (
+          <ul>
+            {tasks.map((task) => (
+              <TaskItem
+                key={task.id}
+                task={task}
+              />
+            ))}
+          </ul>
+        )}
       </div>
+      
       <Form method="post">
         <input type="hidden" name="intent" value="logout" />
         <button type="submit">ログアウト</button>
